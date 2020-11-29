@@ -1,21 +1,9 @@
-// -----------------------------------------------------------------------------
+// This code originally based on 
 // WiFi Modem and Telnet Server
 // Copyright (C) 2018 David Hansel
-//
-// This program is free software; you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation; either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software Foundation,
-// Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 // -----------------------------------------------------------------------------
+// Modifications by James Lewis @baldengineer
+// WiFi9600 Practical Perpherials 9600SA Retro Cycling
 
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
@@ -23,11 +11,6 @@
 #include <EEPROM.h>
 
 #include <Wire.h> //Needed for I2C to Qwiic MP3 Trigger
-
-#include "SparkFun_Qwiic_MP3_Trigger_Arduino_Library.h" //http://librarymanager/All#SparkFun_MP3_Trigger
-MP3TRIGGER mp3;
-
-
 
 //how many clients should be able to telnet to this ESP8266
 #define MAX_SRV_CLIENTS 3
@@ -43,8 +26,6 @@ bool    modemCommandMode = true, modemEcho = true, modemQuiet = false, modemVerb
 static int linespeeds[] = {0, 75, 110, 300, 600, 1200, 2400, 4800, 7200, 9600, 12000, 14400};
 #define NSPEEDS (sizeof(linespeeds)/sizeof(int))
 
-#define LED_PIN 2
-
 #define REG_ESC            2
 #define REG_CR             3
 #define REG_LF             4
@@ -56,8 +37,7 @@ static int linespeeds[] = {0, 75, 110, 300, 600, 1200, 2400, 4800, 7200, 9600, 1
 #define RELAY_ON LOW
 #define RELAY_OFF HIGH
 
-enum
-  {
+enum  {
     E_OK = 0,
     E_CONNECT,
     E_RING,
@@ -75,9 +55,7 @@ enum
     E_CONNECT19200
   };
 
-
-struct TelnetStateStruct
-{
+struct TelnetStateStruct {
   uint8_t cmdLen;
   uint8_t cmd[4];
   bool sendBinary;
@@ -88,16 +66,14 @@ struct TelnetStateStruct
 
 
 #define MAGICVAL 0xF0E1D2C3B4A59687
-struct WiFiDataStruct
-{
+struct WiFiDataStruct {
   uint64_t magic;
   char     ssid[256];
   char     key[256];
 } WifiData;
 
 
-struct SerialDataStruct
-{
+struct SerialDataStruct {
   uint64_t magic;
   uint32_t baud;
   byte     bits;
@@ -109,8 +85,7 @@ struct SerialDataStruct
 } SerialData;
 
 
-SerialConfig GetSerialConfig()
-{
+SerialConfig GetSerialConfig() {
   if( SerialData.bits==5 && SerialData.parity==0 && SerialData.stopbits==1 )
     return SERIAL_5N1;
   else if( SerialData.bits==5 && SerialData.parity==0 && SerialData.stopbits==2 )
@@ -164,8 +139,7 @@ SerialConfig GetSerialConfig()
 }
 
 
-void applySerialSettings()
-{
+void applySerialSettings() {
   Serial.flush();
   Serial.end();
   delay(100);
@@ -179,8 +153,7 @@ const char *parity[] = {"No parity", "Even parity", "Odd parity", NULL};
 const char *stop[]   = {"One stop bit", "Two stop bits", NULL};
 
 
-void handleRoot() 
-{
+void handleRoot() {
   char buffer2[100];
   String s;
   int i;
@@ -466,43 +439,10 @@ void GetWiFiData(const char *msg)
   EEPROM.commit();
 }
 
-byte pots_relay  = D3;
-byte other_relay = D4;
-byte speaker_volume = 24;
-
-void setup() 
-{
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
-
-  // start serial interface with setup parameters (9600 baud 8N1)
-  Serial.begin(9600);
-
-  Wire.begin(D1, D2); /* join i2c bus with SDA=D1 and SCL=D2 of NodeMCU */
-  //Wire.begin();
-
-  //Check to see if Qwiic MP3 is present on the bus
-  if (mp3.begin() == false)
-  {
-    Serial.println("Qwiic MP3 failed to respond. Please check wiring and possibly the I2C address. Freezing...");
-    while (1);
-  }
-  mp3.setVolume(speaker_volume);
-
-  pinMode(pots_relay, OUTPUT);
-  pinMode(other_relay, OUTPUT);
-  digitalWrite(pots_relay, RELAY_ON);
-  digitalWrite(other_relay, RELAY_ON);
-  delay(2000);
-  digitalWrite(pots_relay, RELAY_OFF);
-  digitalWrite(other_relay, RELAY_OFF);
-  delay(2000);
-
-  // read serial info
+init_eeprom_serial() {
   EEPROM.begin(1024);
   EEPROM.get(768, SerialData);
-  if( SerialData.magic != MAGICVAL )
-    {
+  if( SerialData.magic != MAGICVAL ) {
       // use default settings
       SerialData.baud     = 9600;
       SerialData.bits     = 8;
@@ -514,39 +454,29 @@ void setup()
       strcpy(SerialData.telnetTerminalType, "vt100");
       EEPROM.put(768, SerialData);
       EEPROM.commit();
-    }
-  else
-    {
+    } else {
       // make sure terminal type string is ASCII and 0-terminated
       int i = 0;
       while(i<99 && SerialData.telnetTerminalType[i]>=32 && SerialData.telnetTerminalType[i]<127) i++;
       SerialData.telnetTerminalType[i]=0;
     }
-  
-  // read WiFi info
-  WiFi.mode(WIFI_STA);
-  EEPROM.get(0, WifiData);
-  if( WifiData.magic != MAGICVAL ) 
-    GetWiFiData("WiFi connection information not configured.");
+}
 
-  // start WiFi interface
-  while( WiFi.status() != WL_CONNECTED )
-  {
+void start_WiFi_interface() {
+  while( WiFi.status() != WL_CONNECTED ) {
     WiFi.begin(WifiData.ssid, WifiData.key);
     uint8_t i = 0;
 
     // try to connect to WiFi
-    while(WiFi.status() != WL_CONNECTED && i++ < 20 ) 
-    {
+    while(WiFi.status() != WL_CONNECTED && i++ < 20 ) {
       delay(250);
-      digitalWrite(LED_PIN, HIGH); 
+      digitalWrite(led_pin, HIGH); 
       delay(250);
-      digitalWrite(LED_PIN, LOW); 
+      digitalWrite(led_pin, LOW); 
       if( Serial.available()>0 && Serial.read() == 27 ) break;
     }
 
-    if( WiFi.status() != WL_CONNECTED )
-    {
+    if( WiFi.status() != WL_CONNECTED ) {
       char buffer[300];
       if( i == 21 )
         sprintf(buffer, "Could not connect to %s.", WifiData.ssid);
@@ -556,14 +486,47 @@ void setup()
       GetWiFiData(buffer);
     }
   }
+}
+
+void setup() {
+  init_shift_register();
+  // Hi Chat, you look nice today!
+
+  pinMode(ans_pushbutton, INPUT_PULLUP);
+  pinMode(relay_pin, OUTPUT);
+  toggle_relay();
+
+  // setup led on carrier board
+  pinMode(led_pin, OUTPUT);
+  digitalWrite((led), LOW);
+
+  // exercise front panel
+  led_test(50);
+  delay(100);
+  send_led_states(0x0000); // shut off LEDs
+  
+  // Setup Sparkfun MP3 Quiic
+  Wire.begin(i2c_SDA, i2c_SCL); /* join i2c bus with SDA=D1 and SCL=D2 of NodeMCU */
+  init_mp3();
+
+  // read serial info
+  init_eeprom_serial();
+  
+  // read WiFi info
+  WiFi.mode(WIFI_STA);
+  EEPROM.get(0, WifiData);
+  if( WifiData.magic != MAGICVAL ) 
+    GetWiFiData("WiFi connection information not configured.");
+
+  // start WiFi interface
+  start_WiFi_interface();
 
   // if we get here then we're connected to WiFi
-  digitalWrite(LED_PIN, HIGH); 
+  digitalWrite(led_pin, HIGH); 
 
   // if normal operation is different from 9600 8N1 then print info now
   // (and again after switching)
-  if( !SerialData.silent && (SerialData.baud!=9600 || GetSerialConfig()!=SERIAL_8N1) )
-    {
+  if( !SerialData.silent && (SerialData.baud!=9600 || GetSerialConfig()!=SERIAL_8N1) ) {
       Serial.print("\nConnected to network "); Serial.println(WifiData.ssid);
       Serial.print("Listening on port 23 (telnet) at IP "); Serial.println(WiFi.localIP());
       Serial.flush();
@@ -573,27 +536,27 @@ void setup()
   Serial.end();
   Serial.begin(SerialData.baud, GetSerialConfig());
 
-  if( !SerialData.silent )
-  {
+  if( !SerialData.silent )  {
     Serial.println();
+    Serial.print("\nWiFiModem 9600 v1");
     Serial.print("\nConnected to network "); Serial.println(WifiData.ssid);
     Serial.print("Listening on port 23 (telnet) at IP "); Serial.println(WiFi.localIP());
     Serial.print("\nPress 's' to skip this information at future connects.");
     
     int n = 3;
-    unsigned long t = millis()+1000;
-    while( n>0 )
-    {
-      if( millis()>t ) { Serial.print('.'); n--; t = millis()+1000; }
-      if( Serial.available()>0 && tolower(Serial.read())=='s' ) 
-        {
+   // Original code was not rollover safe
+   // unsigned long t = millis()+1000;
+    unsigned long t = millis();
+    while( n > 0 ) {
+      if (millis() - t >= 1000) { Serial.print('.'); n--; t = millis(); }
+//      if( millis()>t ) { Serial.print('.'); n--; t = millis()+1000; } // Bad!!
+      if( Serial.available()>0 && tolower(Serial.read())=='s' )         {
           SerialData.silent = true;
           EEPROM.put(768, SerialData);
           EEPROM.commit();
           break; 
         }
     }
-
     Serial.println('\n');
   }
 
@@ -612,9 +575,7 @@ void setup()
   while( Serial.available() ) Serial.read();
 }
 
-
-bool haveTelnetClient()
-{
+bool haveTelnetClient() {
   for( int i=0; i<MAX_SRV_CLIENTS; i++ )
     if( serverClients[i] && serverClients[i].connected() )
       return true;
@@ -622,9 +583,7 @@ bool haveTelnetClient()
   return false;
 }
 
-
-void resetTelnetState(struct TelnetStateStruct &s)
-{
+void resetTelnetState(struct TelnetStateStruct &s){
   s.cmdLen = 0;
   s.sendBinary = false;
   s.receiveBinary = false;
@@ -633,8 +592,7 @@ void resetTelnetState(struct TelnetStateStruct &s)
 }
 
 
-void resetModemState()
-{
+void resetModemState() {
   const uint8_t regDefaults[] = {2, '+', 
                                  3, '\r', 
                                  4, '\n', 
@@ -663,18 +621,20 @@ void resetModemState()
 }
 
 
-void printModemCR()
-{
+void printModemCR() {
   Serial.print(char(modemReg[REG_CR]));
   if( modemVerbose ) Serial.print(char(modemReg[REG_LF]));
 }
 
-void printModemResult(byte code)
-{
-  if (code == E_CONNECT)
-    digitalWrite(pots_relay, RELAY_ON);
-  if (code == E_NOCARRIER)
-    digitalWrite(pots_relay, RELAY_OFF);
+void printModemResult(byte code) {
+  if (code == E_CONNECT) {
+    // TODO turn on TR, CD
+    toggle_relay();
+  }
+  if (code == E_NOCARRIER) {
+    // TODO turn off TR, CD
+    toggle_relay();
+  }
 
   if( !modemQuiet )
     {
@@ -714,13 +674,11 @@ void printModemResult(byte code)
 }
 
 
-byte getCmdParam(char *cmd, int &ptr)
-{
+byte getCmdParam(char *cmd, int &ptr) {
   byte res = 0;
 
   ptr++;
-  if( isdigit(cmd[ptr]) )
-    {
+  if( isdigit(cmd[ptr]) ) {
       int p = ptr;
       while( isdigit(cmd[ptr]) ) ptr++;
       char c = cmd[ptr];
@@ -735,8 +693,7 @@ byte getCmdParam(char *cmd, int &ptr)
 
 // returns TRUE if input byte "b" is part of a telnet protocol sequence and should
 // NOT be passed through to the serial interface
-bool handleTelnetProtocol(uint8_t b, WiFiClient &client, struct TelnetStateStruct &state)
-{
+bool handleTelnetProtocol(uint8_t b, WiFiClient &client, struct TelnetStateStruct &state) {
 #define T_SE      240 // 0xf0
 #define T_NOP     241 // 0xf1
 #define T_BREAK   243 // 0xf3
@@ -757,38 +714,29 @@ bool handleTelnetProtocol(uint8_t b, WiFiClient &client, struct TelnetStateStruc
   if( !SerialData.handleTelnetProtocol ) return false;
 
   // ---- handle incoming sub-negotiation sequences
-
-  if( state.subnegotiation )
-    {
+  if( state.subnegotiation ) {
       if( SerialData.handleTelnetProtocol>1 ) {Serial.print('<'); Serial.print(b, HEX);}
 
       if( state.cmdLen==0 && b == T_IAC )
         state.cmdLen = 1; 
-      else if( state.cmdLen==1 && b == T_SE )
-        {
+      else if( state.cmdLen==1 && b == T_SE ) {
           state.subnegotiation = false;
           state.cmdLen = 0;
-        }
-      else
-        state.cmdLen = 0;
+        } else
+          state.cmdLen = 0;
 
       return true;
     }
 
   // ---- handle CR-NUL sequences
-
-  if( state.receivedCR )
-    {
+  if( state.receivedCR ) {
       state.receivedCR = false;
-      if( b==0 )
-        {
+      if( b==0 ) {
           // CR->NUL => CR (i.e. ignore the NUL)
           if( SerialData.handleTelnetProtocol>1 ) Serial.print("<0d<00");
           return true;
         }
-    }
-  else if( b == 0x0d && state.cmdLen==0 && !state.receiveBinary )
-    {
+    } else if( b == 0x0d && state.cmdLen==0 && !state.receiveBinary ) {
       // received CR while not in binary mode => remember but pass through
       state.receivedCR = true;
       return false;
@@ -796,89 +744,68 @@ bool handleTelnetProtocol(uint8_t b, WiFiClient &client, struct TelnetStateStruc
   
   // ---- handle IAC sequences
   
-  if( state.cmdLen==0 )
-    {
+  if( state.cmdLen==0 ) {
       // waiting for IAC byte
-      if( b == T_IAC )
-        {
+      if( b == T_IAC ) {
           state.cmdLen = 1;
           state.cmd[0] = T_IAC;
           if( SerialData.handleTelnetProtocol>1 ) {Serial.print('<'); Serial.print(b, HEX);}
           return true;
         }
     }
-  else if( state.cmdLen==1 )
-    {
+  else if( state.cmdLen==1 ) {
       if( SerialData.handleTelnetProtocol>1 ) {Serial.print('<'); Serial.print(b, HEX);}
       // received second byte of IAC sequence
-      if( b == T_IAC )
-        {
+      if( b == T_IAC ) {
           // IAC->IAC sequence means regular 0xff data value
           state.cmdLen = 0; 
 
           // we already skipped the first IAC (0xff), so just return 'false' to pass this one through
           return false; 
-        }
-      else if( b == T_NOP || b == T_BREAK || b == T_GOAHEAD )
-        {
+        } else if( b == T_NOP || b == T_BREAK || b == T_GOAHEAD ) {
           // NOP, BREAK, GOAHEAD => do nothing and skip
           state.cmdLen = 0; 
           return true; 
-        }
-      else if( b == T_SB )
-        {
+        } else if( b == T_SB ) {
           // start of sub-negotiation
           state.subnegotiation = true;
           state.cmdLen = 0;
           return true;
-        }
-      else
-        {
+        } else {
           // record second byte of sequence
           state.cmdLen = 2;
           state.cmd[1] = b;
           return true;
         }
-    }
-  else if( state.cmdLen==2 )
-    {
+    } else if( state.cmdLen==2 )  {
       // received third (i.e. last) byte of IAC sequence
       if( SerialData.handleTelnetProtocol>1 ) {Serial.print('<'); Serial.print(b, HEX);}
       state.cmd[2] = b;
 
       bool reply = true;
-      if( state.cmd[1] == T_WILL )
-        {
-          switch( state.cmd[2] )
-            {
+      if( state.cmd[1] == T_WILL ) {
+          switch( state.cmd[2] ) {
             case TO_SEND_BINARY:        state.cmd[1] = T_DO; state.receiveBinary = true; break;
             case TO_ECHO:               state.cmd[1] = T_DO; break;
             case TO_SUPPRESS_GO_AHEAD:  state.cmd[1] = T_DO; break;
             default: state.cmd[1] = T_DONT; break;
             }
-        }
-      else if( state.cmd[1] == T_WONT )
-        {
-          switch( state.cmd[2] )
-            {
+        } else if( state.cmd[1] == T_WONT ) {
+          switch( state.cmd[2] ) {
             case TO_SEND_BINARY: state.cmd[1] = T_DO; state.receiveBinary = false; break;
             }
           state.cmd[1] = T_DONT; 
         }
-      else if( state.cmd[1] == T_DO )
-        {
-          switch( state.cmd[2] )
-            {
+      else if( state.cmd[1] == T_DO ) {
+          switch( state.cmd[2] ) {
             case TO_SEND_BINARY:       state.cmd[1] = T_WILL; state.sendBinary = true; break;
             case TO_SUPPRESS_GO_AHEAD: state.cmd[1] = T_WILL; break;
             case TO_TERMINAL_TYPE:     state.cmd[1] = SerialData.telnetTerminalType[0]==0 ? T_WONT : T_WILL; break;
             default: state.cmd[1] = T_WONT; break;
             }
         }
-      else if( state.cmd[1] == T_DONT )
-        {
-          switch( state.cmd[2] )
-            {
+      else if( state.cmd[1] == T_DONT ) {
+          switch( state.cmd[2] ) {
             case TO_SEND_BINARY: state.cmd[1] = T_WILL; state.sendBinary = false; break;
             }
           state.cmd[1] = T_WONT;
@@ -887,15 +814,13 @@ bool handleTelnetProtocol(uint8_t b, WiFiClient &client, struct TelnetStateStruc
         reply = false;
 
       // send reply if necessary
-      if( reply ) 
-        {
+      if( reply ) {
           if( SerialData.handleTelnetProtocol>1 )
             for(int k=0; k<3; k++) {Serial.print('>'); Serial.print(state.cmd[k], HEX);}
 
           client.write(state.cmd, 3);
 
-          if( state.cmd[1] == T_WILL && state.cmd[2] == TO_TERMINAL_TYPE )
-            {
+          if( state.cmd[1] == T_WILL && state.cmd[2] == TO_TERMINAL_TYPE ) {
               // send terminal-type subnegoatiation sequence
               uint8_t buf[110], i, n=0;
               buf[n++] = T_IAC;
@@ -915,9 +840,7 @@ bool handleTelnetProtocol(uint8_t b, WiFiClient &client, struct TelnetStateStruc
       // start over
       state.cmdLen = 0;
       return true;
-    }
-  else
-    {
+    } else {
       // invalid state (should never happen) => just reset
       state.cmdLen = 0;
     }
@@ -926,23 +849,20 @@ bool handleTelnetProtocol(uint8_t b, WiFiClient &client, struct TelnetStateStruc
 }
 
 
-void handleModemCommand()
-{
+void handleModemCommand() {
   // check if a modem AT command was received
   static int cmdLen = 0, prevCmdLen = 0;
   static char cmd[81];
   char c = 0;
 
-  if( Serial.available() )
-    {
+  if( Serial.available() ) {
       c = (Serial.read() & 0x7f);
       if( cmdLen<80 && c>32 )
         cmd[cmdLen++] = toupper(c);
       else if( cmdLen>0 && c == modemReg[REG_BSP] )
         cmdLen--;
           
-      if( modemEcho ) 
-        {
+      if( modemEcho ) {
           if( c==8 )
             { Serial.print(char(8)); Serial.print(' '); Serial.print(char(8)); }
           else
@@ -952,31 +872,25 @@ void handleModemCommand()
       prevCharTime = millis();
     }
 
-  if( cmdLen==2 && cmd[0]=='A' && cmd[1]=='/' )
-    {
+  if( cmdLen==2 && cmd[0]=='A' && cmd[1]=='/' ) {
       c = modemReg[REG_CR];
       cmd[1] = 'T';
       cmdLen = prevCmdLen;
     }
       
-  if( c == modemReg[REG_CR] )
-    {
+  if( c == modemReg[REG_CR] ) {
       prevCmdLen = cmdLen;
-      if( cmdLen>=2 && cmd[0]=='A' && cmd[1]=='T' )
-        {
+      if( cmdLen>=2 && cmd[0]=='A' && cmd[1]=='T' ) {
           cmd[cmdLen]=0;
           int ptr = 2;
           bool connecting = false;
           int status = E_OK;
-          while( status!=E_ERROR && ptr<cmdLen )
-            {
-              if( cmd[ptr]=='D' )
-                {
+          while( status!=E_ERROR && ptr<cmdLen ) {
+              if( cmd[ptr]=='D' ) {
                   unsigned long t = millis();
 
                   // if we are already connected then disconnect first
-                  if( modemClient.connected() ) 
-                    {
+                  if( modemClient.connected() ) {
                       modemClient.stop();
                       modemReg[REG_CURLINESPEED] = 0;
                     }
@@ -985,12 +899,10 @@ void handleModemCommand()
 
                   bool haveAlpha = false;
                   int numSep = 0;
-                  for(int j=ptr; j<cmdLen && !haveAlpha; j++)
-                    {
+                  for(int j=ptr; j<cmdLen && !haveAlpha; j++) {
                       if( isalpha(cmd[j]) )
                         haveAlpha = true;
-                      else if( !isdigit(cmd[j]) )
-                        {
+                      else if( !isdigit(cmd[j]) ) {
                           numSep++;
                           while( j<cmdLen && !isdigit(cmd[j]) ) j++;
                         }
@@ -999,22 +911,17 @@ void handleModemCommand()
                   byte n[4];
                   IPAddress addr;
                   int port = 23;
-                  if( haveAlpha )
-                    {
+                  if( haveAlpha ) {
                       int p = ptr;
                       while( cmd[p]!=':' && p<cmdLen ) p++;
                       char c = cmd[p];
                       cmd[p] = 0;
-                      if( WiFi.hostByName(cmd+ptr, addr, 5000) )
-                        {
+                      if( WiFi.hostByName(cmd+ptr, addr, 5000) ) {
                           if( p+1<cmdLen ) port = atoi(cmd+p+1);
-                        }
-                      else
+                        } else
                         status = E_NOCARRIER;
                       cmd[p] = c;
-                    }
-                  else if( numSep==0 )
-                    {
+                    } else if( numSep==0 ) {
                       if( (cmdLen-ptr==12) || (cmdLen-ptr==16) )
                         {
                           for(int j=0; j<12; j+=3)
@@ -1051,12 +958,15 @@ void handleModemCommand()
                   else
                     status = E_ERROR;
 
-                  if( status==E_OK )
-                    {
+                  if( status==E_OK ) {
+                      // TODO: mp3 playing
+                      // TODO: turn on TR, OH
                       mp3.playTrack(1);
-                      delay(2500);
-                      if( modemClient.connect(addr, port) )
-                        {
+                      for (int x=0; x<5; x++) {
+                        delay(500);
+                        yield();
+                      }
+                      if( modemClient.connect(addr, port) ) {
                           modemCommandMode = false;
                           modemEscapeState = 0;
                           resetTelnetState(modemTelnetState);
@@ -1075,18 +985,24 @@ void handleModemCommand()
                           else if( modemReg[REG_LINESPEED] < NSPEEDS )
                             modemReg[REG_CURLINESPEED] = min(modemReg[REG_LINESPEED], byte(NSPEEDS-1));
 
-                          if( modemExtCodes==0 )
-                            {
+                          if( modemExtCodes==0 ) {
+                              // TODO fix mp3 playing
+                              // Turn on HS, DC, and DC
+                              // HS, depends on baud, EC and DC...
                               status = E_CONNECT;
                               connecting = true;
                               mp3.playTrack(3);
-                              delay(3000);
+                              for (int x=0; x<6; x++) {
+                                delay(500);
+                                yield();
+                              }
                               //mp3.stop();
                             }
                           else
                             {
                               switch( modemReg[REG_CURLINESPEED] )
                                 {
+                                  // TODO HS light
                                 case 3: status = E_CONNECT; break;
                                 case 4: status = E_CONNECT600; break;
                                 case 5: status = E_CONNECT1200; break;
@@ -1108,16 +1024,14 @@ void handleModemCommand()
 
                       // force at least 1 second delay between receiving
                       // the dial command and responding to it
-                      if( millis()-t<1000 ) delay(1000-(millis()-t));
+                      if((millis()-t) < 1000) delay(1000-(millis()-t));
                     }
                       
                   // ATD can not be followed by other commands
                   ptr = cmdLen;
                 }
-              else if( cmd[ptr]=='H' )
-                {
-                  if( cmdLen-ptr==1 || cmd[ptr+1]=='0' )
-                    {
+              else if( cmd[ptr]=='H' ) {
+                  if( cmdLen-ptr==1 || cmd[ptr+1]=='0' ) {
                       // hang up
                       if( modemClient.connected() ) 
                         {
@@ -1128,8 +1042,7 @@ void handleModemCommand()
 
                   ptr += 2;
                 }
-              else if( cmd[ptr]=='O' )
-                {
+              else if( cmd[ptr]=='O' ) {
                   getCmdParam(cmd, ptr);
                   if( modemClient.connected() )
                     {
@@ -1256,45 +1169,41 @@ void handleModemCommand()
     }
 }
 
-
-void relayModemData()
-{
-  if( modemClient && modemClient.connected() && modemClient.available() ) 
-    {
+// for serial connected clients
+void relayModemData() {
+  if( modemClient && modemClient.connected() && modemClient.available() ) {
       int baud = modemReg[REG_CURLINESPEED]==255 ? SerialData.baud : linespeeds[modemReg[REG_CURLINESPEED]];
 
-      if( baud == SerialData.baud )
-        {
+      // TODO: Receiving data from telnet, enable RX light
+      if( baud == SerialData.baud ) {
           // use full modem<->computer data rate
+          // jl: I think this means, immediately pass the data since we're the same speed
           unsigned long t = millis();
-          while( modemClient.available() && Serial.availableForWrite() && millis()-t < 100 )
-            {
+          while( modemClient.available() && Serial.availableForWrite() && millis()-t < 100 ) {
               uint8_t b = modemClient.read();
               if( !handleTelnetProtocol(b, modemClient, modemTelnetState) ) Serial.write(b);
             }
-        }
-      else if( modemClient.available() && Serial.availableForWrite() )
-        {
+        } else if( modemClient.available() && Serial.availableForWrite() ) {
           // limit data rate
+          // jl: probably because computer is faster than modem e.g. PC is at 9600 and modem is at 2400
           static unsigned long nextChar = 0;
-          if( millis()>=nextChar )
-            {
+          // TODO fix millis() rollover
+          if( millis()>=nextChar ) {
               uint8_t b = modemClient.read();
-              if( !handleTelnetProtocol(b, modemClient, modemTelnetState) )
-                {
+              if( !handleTelnetProtocol(b, modemClient, modemTelnetState) ) {
                   Serial.write(b);
+                  // TODO fix millis() code
                   nextChar = millis() + 10000/baud;
                 }
             }
         }
     }
 
-  if( millis() > prevCharTime + 20*modemReg[REG_GUARDTIME] )
-    {
+  // why for this here?
+  if( millis() > prevCharTime + 20*modemReg[REG_GUARDTIME] ) {
       if( modemEscapeState==0 )
         modemEscapeState = 1;
-      else if( modemEscapeState==4 )
-        {
+      else if( modemEscapeState==4 ) {
           // received [1 second pause] +++ [1 second pause]
           // => switch to command mode
           modemCommandMode = true;
@@ -1302,19 +1211,17 @@ void relayModemData()
         }
     }
 
-  if( Serial.available() )
-    {
+  // send data from PC to the modem?
+  if( Serial.available() ) {
       uint8_t buf[256];
       int n = 0, millisPerChar = 1000 / (SerialData.baud / (1+SerialData.bits+SerialData.stopbits)) + 1;
       unsigned long startTime = millis();
               
       if( millisPerChar<5 ) millisPerChar = 5;
-      while( Serial.available() && n<256 && millis()-startTime < 100 )
-        {
+      while( Serial.available() && n<256 && millis()-startTime < 100 ) {
           uint8_t b = Serial.read();
 
-          if( SerialData.handleTelnetProtocol )
-            {
+          if( SerialData.handleTelnetProtocol ) {
               // Telnet protocol handling is enabled
 
               // must duplicate IAC tokens
@@ -1340,14 +1247,13 @@ void relayModemData()
               
       // if not sending in binary mode then a stand-alone CR (without LF) must be followd by NUL
       if( SerialData.handleTelnetProtocol && !modemTelnetState.sendBinary && buf[n-1] == 0x0d && !Serial.available() ) buf[n++] = 0;
-
+      // TODO TX light
       modemClient.write(buf, n);
     }
 }
 
-
-void relayTelnetData()
-{
+// handle clients connected to the WiFiModem from telnet ...
+void relayTelnetData() {
   int i;
 
   //check clients for data
@@ -1358,6 +1264,7 @@ void relayTelnetData()
         unsigned long t = millis();
         while(serverClients[i].available() && Serial.availableForWrite() && millis()-t < 100)
           {
+            // TODO-maybe add another RX light flash
             uint8_t b = serverClients[i].read();
             if( !handleTelnetProtocol(b, serverClients[i], clientTelnetState[i]) ) Serial.write(b);
           }
@@ -1366,15 +1273,15 @@ void relayTelnetData()
   }
           
   //check UART for data
-  if( Serial.available() )
-    {
+  if( Serial.available() ) {
       uint8_t buf[256];
+      // TODO fix millis() rollever, moar addition :(
       int n = 0, millisPerChar = 1000 / (SerialData.baud / (1+SerialData.bits+SerialData.stopbits))+1;
       unsigned long t, startTime = millis();
           
       if( millisPerChar<5 ) millisPerChar = 5;
-      while( Serial.available() && n<256 && millis()-startTime < 100 )
-        {
+      while( Serial.available() && n<256 && millis()-startTime < 100 ) {
+          // TODO-maybe flash the TX light
           uint8_t b = Serial.read();
           buf[n++] = b;
               
@@ -1415,19 +1322,15 @@ void loop()
 {
   uint8_t i;
 
-  if( modemClient && modemClient.connected() )
-    {
+  if( modemClient && modemClient.connected() ) {
       // modem is connected. if telnet server has new client then reject
       if( server.hasClient() ) server.available().stop();
 
       // only relay data if not in command mode
       if( !modemCommandMode ) relayModemData();
-    }
-  else
-    {
+    } else {
       // check whether connection to modem client was lost
-      if( !modemCommandMode )
-        {
+      if( !modemCommandMode ) {
           modemClient.stop();
           modemCommandMode = true;
           modemReg[REG_CURLINESPEED] = 0;
@@ -1435,13 +1338,10 @@ void loop()
         }
 
       // check if there are any new telnet clients
-      if( server.hasClient() ) 
-        {
+      if( server.hasClient() ) {
           // find free/disconnected spot
-          for( i=0; i<MAX_SRV_CLIENTS; i++ )
-            {
-              if( !serverClients[i] || !serverClients[i].connected() ) 
-                {
+          for( i=0; i<MAX_SRV_CLIENTS; i++ ) {
+              if( !serverClients[i] || !serverClients[i].connected() )  {
                   serverClients[i] = server.available();
                   resetTelnetState(clientTelnetState[i]);
                   break;
@@ -1449,8 +1349,7 @@ void loop()
             }
           
           //no free/disconnected spot so reject
-          if( i == MAX_SRV_CLIENTS )
-            {
+          if( i == MAX_SRV_CLIENTS ) {
               WiFiClient serverClient = server.available();
               serverClient.stop();
             }
@@ -1464,3 +1363,21 @@ void loop()
 
   webserver.handleClient();
 }
+
+// WiFi Modem and Telnet Server
+// Copyright (C) 2018 David Hansel
+//
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program; if not, write to the Free Software Foundation,
+// Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
+// -----------------------------------------------------------------------------
