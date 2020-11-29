@@ -12,6 +12,8 @@
 
 #include <Wire.h> //Needed for I2C to Qwiic MP3 Trigger
 
+#include "WiFi9600-Modem.h"
+
 //how many clients should be able to telnet to this ESP8266
 #define MAX_SRV_CLIENTS 3
 
@@ -439,7 +441,7 @@ void GetWiFiData(const char *msg)
   EEPROM.commit();
 }
 
-init_eeprom_serial() {
+void init_eeprom_serial() {
   EEPROM.begin(1024);
   EEPROM.get(768, SerialData);
   if( SerialData.magic != MAGICVAL ) {
@@ -493,17 +495,20 @@ void setup() {
   // Hi Chat, you look nice today!
 
   pinMode(ans_pushbutton, INPUT_PULLUP);
-  pinMode(relay_pin, OUTPUT);
+  pinMode(pots_relay, OUTPUT);
   toggle_relay();
 
   // setup led on carrier board
   pinMode(led_pin, OUTPUT);
-  digitalWrite((led), LOW);
+  digitalWrite(led_pin, LOW);
 
-  // exercise front panel
+  // exercise front nanel
   led_test(50);
   delay(100);
   send_led_states(0x0000); // shut off LEDs
+
+  Serial.begin(9600);
+  Serial.println("After LED test before MP3");
   
   // Setup Sparkfun MP3 Quiic
   Wire.begin(i2c_SDA, i2c_SCL); /* join i2c bus with SDA=D1 and SCL=D2 of NodeMCU */
@@ -961,11 +966,9 @@ void handleModemCommand() {
                   if( status==E_OK ) {
                       // TODO: mp3 playing
                       // TODO: turn on TR, OH
-                      mp3.playTrack(1);
-                      for (int x=0; x<5; x++) {
-                        delay(500);
-                        yield();
-                      }
+
+                      mp3_play_dialout();
+
                       if( modemClient.connect(addr, port) ) {
                           modemCommandMode = false;
                           modemEscapeState = 0;
@@ -991,11 +994,7 @@ void handleModemCommand() {
                               // HS, depends on baud, EC and DC...
                               status = E_CONNECT;
                               connecting = true;
-                              mp3.playTrack(3);
-                              for (int x=0; x<6; x++) {
-                                delay(500);
-                                yield();
-                              }
+                              mp3_play_carrier_detect();
                               //mp3.stop();
                             }
                           else
