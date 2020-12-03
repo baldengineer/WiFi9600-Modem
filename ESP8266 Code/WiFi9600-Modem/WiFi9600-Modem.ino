@@ -631,14 +631,33 @@ void printModemCR() {
   if( modemVerbose ) Serial.print(char(modemReg[REG_LF]));
 }
 
+void connect_lights(uint16_t HSled, bool state) {
+    update_led(ECgrn, TURN_ON, false);
+    update_led(ECred, TURN_ON, true);
+    update_led(DC, TURN_ON, true); 
+    update_led(HSled, state, true);
+}
+
 void printModemResult(byte code) {
   if (code == E_CONNECT) {
-    // TODO turn on TR, CD
-    toggle_relay();
   }
+
   if (code == E_NOCARRIER) {
-    // TODO turn off TR, CD
     toggle_relay();
+    all_led_state(TURN_OFF);
+  }
+  switch(code) {
+    case E_CONNECT1200: 
+    case E_CONNECT2400: 
+    case E_CONNECT4800:
+    case E_CONNECT: 
+      connect_lights(HSred, TURN_ON); 
+      break;
+    case E_CONNECT9600:
+    case E_CONNECT14400:
+    case E_CONNECT19200: 
+      connect_lights(HSgrn, TURN_ON); 
+      break;
   }
 
   if( !modemQuiet )
@@ -646,8 +665,7 @@ void printModemResult(byte code) {
       if( modemVerbose )
         {
           printModemCR();
-          switch( code )
-            {
+          switch( code ) {
             case E_OK            : Serial.print("OK");             break;
             case E_CONNECT       : Serial.print("CONNECT");        break;
             case E_RING          : Serial.print("RING");           break;
@@ -942,7 +960,7 @@ void handleModemCommand() {
                         }
                       else
                         status = E_ERROR;
-
+                        toggle_relay();
                       ptr = cmdLen;
                     }
                   else if( numSep==3 || numSep==4 )
@@ -964,9 +982,9 @@ void handleModemCommand() {
                     status = E_ERROR;
 
                   if( status==E_OK ) {
-                      // TODO: mp3 playing
-                      // TODO: turn on TR, OH
-
+                      update_led(TR, TURN_ON, true);
+                      update_led(OH, TURN_ON, true);
+                      toggle_relay();
                       mp3_play_dialout();
 
                       if( modemClient.connect(addr, port) ) {
@@ -989,37 +1007,37 @@ void handleModemCommand() {
                             modemReg[REG_CURLINESPEED] = min(modemReg[REG_LINESPEED], byte(NSPEEDS-1));
 
                           if( modemExtCodes==0 ) {
-                              // TODO fix mp3 playing
-                              // Turn on HS, DC, and DC
-                              // HS, depends on baud, EC and DC...
                               status = E_CONNECT;
                               connecting = true;
                               mp3_play_carrier_detect();
                               //mp3.stop();
-                            }
-                          else
-                            {
-                              switch( modemReg[REG_CURLINESPEED] )
-                                {
-                                  // TODO HS light
-                                case 3: status = E_CONNECT; break;
-                                case 4: status = E_CONNECT600; break;
-                                case 5: status = E_CONNECT1200; break;
-                                case 6: status = E_CONNECT2400; break;
-                                case 7: status = E_CONNECT4800; break;
-                                case 9: status = E_CONNECT9600; break;
-                                default: status = E_CONNECT; break;
-                                }
-
+                            } else {
+                              switch( modemReg[REG_CURLINESPEED] ) {
+                                case 3: status = E_CONNECT;  break;
+                                case 4: status = E_CONNECT600;   break;
+                                case 5: status = E_CONNECT1200;   break;
+                                case 6: status = E_CONNECT2400;   break;
+                                case 7: status = E_CONNECT4800;  break;
+                                case 9: status = E_CONNECT9600;  break;
+                                default: status = E_CONNECT;   break;
+                              }
                               connecting = true;
+                              mp3_play_carrier_detect();
                             }
-                        }
-                      else if( modemExtCodes < 2 )
+                        } else if( modemExtCodes < 2 ) {
+                        toggle_relay();
+                        all_led_state(TURN_OFF);
                         status = E_NOCARRIER;
-                      else if( WiFi.status() != WL_CONNECTED )
+                      }
+                      else if( WiFi.status() != WL_CONNECTED ) {
+                        toggle_relay();
+                        all_led_state(TURN_OFF);
                         status = E_NODIALTONE;
-                      else
+                      } else {
+                        toggle_relay();
+                        all_led_state(TURN_OFF);
                         status = E_NOANSWER;
+                      }
 
                       // force at least 1 second delay between receiving
                       // the dial command and responding to it
@@ -1180,6 +1198,8 @@ void relayModemData() {
           unsigned long t = millis();
           while( modemClient.available() && Serial.availableForWrite() && millis()-t < 100 ) {
               uint8_t b = modemClient.read();
+              previous_RX_act = millis(); 
+              update_led(RX, TURN_ON, true);
               if( !handleTelnetProtocol(b, modemClient, modemTelnetState) ) Serial.write(b);
             }
         } else if( modemClient.available() && Serial.availableForWrite() ) {
@@ -1247,6 +1267,8 @@ void relayModemData() {
       // if not sending in binary mode then a stand-alone CR (without LF) must be followd by NUL
       if( SerialData.handleTelnetProtocol && !modemTelnetState.sendBinary && buf[n-1] == 0x0d && !Serial.available() ) buf[n++] = 0;
       // TODO TX light
+      previous_TX_act = millis(); 
+      update_led(TX, TURN_ON, true);
       modemClient.write(buf, n);
     }
 }
@@ -1322,6 +1344,7 @@ void loop()
   uint8_t i;
 
   if( modemClient && modemClient.connected() ) {
+      activity_decay();
       // modem is connected. if telnet server has new client then reject
       if( server.hasClient() ) server.available().stop();
 

@@ -33,8 +33,9 @@ void send_led_states(uint16_t leds) {
 // alternative to just sending send_led_update() with 0xFFFF or 0x0;
 void all_led_state(bool state) {
 	for (int x=0; x<11; x++) 
-		update_led(front_leds[x], state, false);
+		update_led(front_leds[x], state, true);
 }
+
 
 // test routine for front panel to turn on LEDs, in order
 void led_test(int wait) {
@@ -131,19 +132,35 @@ unsigned long activity_interval = 50; // may need separate intervals for RX and 
 }
 
 void mp3_play_dialout() { 
+	//Serial.print("Dialout mp3");
 	mp3.playTrack(1);
-	for (int x=0; x<5; x++) {
+	delay(100);
+	while(mp3.isPlaying()){
+		delay(100);
+		yield();
+	}
+/*	for (int x=0; x<5; x++) {
  	   delay(500);
 	    yield();
-	  }
+	  } */
 }
 
 void mp3_play_carrier_detect() {
+	mp3.stop();
 	mp3.playTrack(3);
-	for (int x=0; x<6; x++) {
+	delay(100);
+	unsigned long start_time = millis();
+
+	while( mp3.isPlaying() && (millis() - start_time < 2500)) {
+		delay(100);
+		yield();
+	}
+	//Serial.print("CD MP3");
+/*f	for (int x=0; x<6; x++) {
+	//	Serial.print(".");
  		delay(500);
 	    yield();
-	}
+	}*/
 }
 
 void init_mp3() {
@@ -161,7 +178,7 @@ void toggle_relay() {
   else
     relay_state = true;
 
-	Serial.print("Relay: "); Serial.println(relay_state);
+	//Serial.print("Relay: "); Serial.println(relay_state);
 
 	digitalWrite(pots_relay, relay_state);
 }
