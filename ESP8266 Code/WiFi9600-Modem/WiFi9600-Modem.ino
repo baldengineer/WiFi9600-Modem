@@ -494,7 +494,7 @@ void setup() {
   init_shift_register();
   // Hi Chat, you look nice today!
 
-  pinMode(ans_pushbutton, INPUT_PULLUP);
+  pinMode(ans_pushbutton, INPUT); // wemos board has pull-up resistor
   pinMode(pots_relay, OUTPUT);
   toggle_relay();
 
@@ -1346,13 +1346,30 @@ void relayTelnetData() {
 }
 
 
-void loop() 
-{
+
+void loop() {
   uint8_t i;
 
-  // let the user know the modem is booted
-  if (!(led_states & TR))
-    update_led(TR, TURN_ON, true);
+  // check if ANSWER pushbutton has been pressed
+  bool current_ans_pb_state = digitalRead(ans_pushbutton);
+
+  if (previous_ans_pb_state != current_ans_pb_state) {
+    if (current_ans_pb_state == PRESSED) {
+      modemClient.stop();
+      update_led(AA, TURN_ON, true);
+    } else {
+      update_led(AA, TURN_OFF, true);
+    }
+    previous_ans_pb_state = current_ans_pb_state;
+  }
+
+  // let the user know the modem is connected to WiFi
+  if (WiFi.status() == WL_CONNECTED){
+    if (!(led_states & TR))  // only send the "on" command once
+      update_led(TR, TURN_ON, true);
+  } else {
+      update_led(TR, TURN_OFF, true);
+  }
 
   if( modemClient && modemClient.connected() ) {
       activity_decay();

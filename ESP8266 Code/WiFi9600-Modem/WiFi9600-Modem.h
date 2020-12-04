@@ -45,13 +45,14 @@ const byte latch_595 = 13; //13 - D7
 const byte clock_595 = 12; //12 - D6
 const byte data_595 = 14;  //14 - D5
 
-// LED states, to make code more readable
-#define TURN_ON  true
-#define TURN_OFF false
-
+// track answer pushbutton
+bool previous_ans_pb_state = false;
 #define     PRESSED 0x0
 #define NOT_PRESSED 0x1
 
+// LED states, to make code more readable
+#define TURN_ON  true
+#define TURN_OFF false
 // activity indicator 
 bool TX_state = TURN_OFF;
 bool RX_state = TURN_OFF;
