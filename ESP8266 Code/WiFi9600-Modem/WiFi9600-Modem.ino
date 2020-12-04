@@ -490,96 +490,6 @@ void start_WiFi_interface() {
   }
 }
 
-void setup() {
-  init_shift_register();
-  // Hi Chat, you look nice today!
-
-  pinMode(ans_pushbutton, INPUT); // wemos board has pull-up resistor
-  pinMode(pots_relay, OUTPUT);
-  toggle_relay();
-
-  // setup led on carrier board
-  pinMode(led_pin, OUTPUT);
-  digitalWrite(led_pin, LOW);
-
-  // exercise front nanel
-  led_test(50);
-  delay(100);
-  send_led_states(0x0000); // shut off LEDs
-
-  Serial.begin(9600);
-//  Serial.println("After LED test before MP3");
-  
-  // Setup Sparkfun MP3 Quiic
-  Wire.begin(i2c_SDA, i2c_SCL); /* join i2c bus with SDA=D1 and SCL=D2 of NodeMCU */
-  init_mp3();
-
-  // read serial info
-  init_eeprom_serial();
-  
-  // read WiFi info
-  WiFi.mode(WIFI_STA);
-  EEPROM.get(0, WifiData);
-  if( WifiData.magic != MAGICVAL ) 
-    GetWiFiData("WiFi connection information not configured.");
-
-  // start WiFi interface
-  start_WiFi_interface();
-
-  // if we get here then we're connected to WiFi
-  digitalWrite(led_pin, HIGH); 
-
-  // if normal operation is different from 9600 8N1 then print info now
-  // (and again after switching)
-  if( !SerialData.silent && (SerialData.baud!=9600 || GetSerialConfig()!=SERIAL_8N1) ) {
-      Serial.print("\nConnected to network "); Serial.println(WifiData.ssid);
-      Serial.print("Listening on port 23 (telnet) at IP "); Serial.println(WiFi.localIP());
-      Serial.flush();
-    }
-
-  // re-start serial interface with normal operation parameters
-  Serial.end();
-  Serial.begin(SerialData.baud, GetSerialConfig());
-
-  if( !SerialData.silent )  {
-    Serial.println();
-    Serial.print("\nWiFiModem 9600 v1");
-    Serial.print("\nConnected to network "); Serial.println(WifiData.ssid);
-    Serial.print("Listening on port 23 (telnet) at IP "); Serial.println(WiFi.localIP());
-    Serial.print("\nPress 's' to skip this information at future connects.");
-    
-    int n = 3;
-   // Original code was not rollover safe
-   // unsigned long t = millis()+1000;
-    unsigned long t = millis();
-    while( n > 0 ) {
-      if (millis() - t >= 1000) { Serial.print('.'); n--; t = millis(); }
-//      if( millis()>t ) { Serial.print('.'); n--; t = millis()+1000; } // Bad!!
-      if( Serial.available()>0 && tolower(Serial.read())=='s' )         {
-          SerialData.silent = true;
-          EEPROM.put(768, SerialData);
-          EEPROM.commit();
-          break; 
-        }
-    }
-    Serial.println('\n');
-  }
-
-  MDNS.begin("esp8266");
-  webserver.on("/", handleRoot);
-  webserver.on("/set", handleSet);
-  webserver.onNotFound(handleNotFound);
-  webserver.begin();
-
-  server.begin();
-  server.setNoDelay(true);
-
-  resetModemState();
-
-  // flush serial input buffer
-  while( Serial.available() ) Serial.read();
-}
-
 bool haveTelnetClient() {
   for( int i=0; i<MAX_SRV_CLIENTS; i++ )
     if( serverClients[i] && serverClients[i].connected() )
@@ -1076,8 +986,7 @@ void handleModemCommand() {
                 modemVerbose = getCmdParam(cmd, ptr)!=0;
               else if( cmd[ptr]=='X' )
                 modemExtCodes = getCmdParam(cmd, ptr);
-              else if( cmd[ptr]=='Z' )
-                {
+              else if( cmd[ptr]=='Z' ) {
                   // reset serial settings to saved value
                   EEPROM.get(768, SerialData);
                   applySerialSettings();
@@ -1088,17 +997,14 @@ void handleModemCommand() {
 
                   // ATZ can not be followed by other commands
                   ptr = cmdLen;
-                }
-              else if( cmd[ptr]=='S' )
-                {
+                } else if( cmd[ptr]=='S' ) {
                   static uint8_t currentReg = 0;
                   int p = ptr;
                   int reg = getCmdParam(cmd, ptr);
                   if( ptr==p+1 ) reg = currentReg;
                   currentReg = reg;
 
-                  if( cmd[ptr]=='?' )
-                    {
+                  if( cmd[ptr]=='?' ) {
                       ptr++;
                       byte v = modemReg[reg];
                       if( modemVerbose ) printModemCR();
@@ -1106,49 +1012,33 @@ void handleModemCommand() {
                       if( v<10  ) Serial.print('0');
                       Serial.print(v);
                       printModemCR();
-                    }
-                  else if( cmd[ptr]=='=' )
-                    {
+                    } else if( cmd[ptr]=='=' ) {
                       byte v = getCmdParam(cmd, ptr);
                       if( reg != REG_CURLINESPEED )
                         modemReg[reg] = v;
                     }
-                }
-              else if( cmd[ptr]=='I' )
-                {
+                } else if( cmd[ptr]=='I' ) {
                   byte n = getCmdParam(cmd, ptr);
-                }
-              else if( cmd[ptr]=='M' || cmd[ptr]=='L' || cmd[ptr]=='A' || cmd[ptr]=='P' || cmd[ptr]=='T' )
-                {
+                } else if( cmd[ptr]=='M' || cmd[ptr]=='L' || cmd[ptr]=='A' || cmd[ptr]=='P' || cmd[ptr]=='T' ) {
                   // ignore speaker settings, answer requests, pulse/tone dial settings
                   getCmdParam(cmd, ptr);
-                }
-              else if( cmd[ptr]=='#' )
-                {
+                } else if( cmd[ptr]=='#' ) {
                   ptr++;
-                  if( strncmp(cmd+ptr, "BDR", 3)==0 )
-                    {
+                  if( strncmp(cmd+ptr, "BDR", 3)==0 ) {
                       ptr += 3;
-                      if( cmd[ptr]=='?' )
-                        {
+                      if( cmd[ptr]=='?' ) {
                           if( modemVerbose ) printModemCR();
                           Serial.print(SerialData.baud / 2400);
                           printModemCR();
-                        }
-                      else if( cmd[ptr]=='=' )
-                        {
-                          if( cmd[ptr+1]=='?' )
-                            {
+                        } else if( cmd[ptr]=='=' ) {
+                          if( cmd[ptr+1]=='?' ) {
                               if( modemVerbose ) printModemCR();
                               Serial.print('0');
                               for(int i=1; i<48; i++) { Serial.print(','); Serial.print(i); }
                               printModemCR();
-                            }
-                          else
-                            {
+                            } else {
                               byte v = getCmdParam(cmd, ptr);
-                              if( v <= 48 )
-                                {
+                              if( v <= 48 ) {
                                   if( v==0 )
                                     EEPROM.get(768, SerialData);
                                   else
@@ -1157,20 +1047,16 @@ void handleModemCommand() {
                                   printModemResult(E_OK);
                                   applySerialSettings();
                                   status = -1;
-                                }
-                              else
-                                status = E_ERROR;
+                                } else
+                                    status = E_ERROR;
                             }
-                        }
-                      else
-                        status = E_ERROR;
-                    }
-                  else
-                    status = E_ERROR;
+                        } else
+                          status = E_ERROR;
+                  } else
+                      status = E_ERROR;
                   ptr = cmdLen;
-                }
-              else
-                status = E_ERROR;
+                } else
+                   status = E_ERROR;
             }
 
           if( status>=0 )
@@ -1178,9 +1064,8 @@ void handleModemCommand() {
 
           // delay 1 second after a "CONNECT" message
           if( connecting ) delay(1000);
-        }
-      else if( cmdLen>0 )
-        printModemResult(E_ERROR);
+        } else if( cmdLen>0 )
+          printModemResult(E_ERROR);
               
       cmdLen = 0;
     }
@@ -1345,6 +1230,99 @@ void relayTelnetData() {
     }
 }
 
+void setup() {
+  init_shift_register();
+  // Hi Chat, you look nice today!
+
+  pinMode(ans_pushbutton, INPUT); // wemos board has pull-up resistor
+  pinMode(pots_relay, OUTPUT);
+  toggle_relay();
+
+  // setup led on carrier board
+  pinMode(led_pin, OUTPUT);
+  digitalWrite(led_pin, LOW);
+
+  // exercise front nanel
+  led_test(50);
+  delay(100);
+  send_led_states(0x0000); // shut off LEDs
+
+  Serial.begin(9600);
+//  Serial.println("After LED test before MP3");
+  
+  // Setup Sparkfun MP3 Quiic
+  Wire.begin(i2c_SDA, i2c_SCL); /* join i2c bus with SDA=D1 and SCL=D2 of NodeMCU */
+  init_mp3();
+
+  // read serial info
+  init_eeprom_serial();
+  
+  // read WiFi info
+  WiFi.mode(WIFI_STA);
+  EEPROM.get(0, WifiData);
+  if( WifiData.magic != MAGICVAL ) 
+    GetWiFiData("WiFi connection information not configured.");
+
+  // start WiFi interface
+  start_WiFi_interface();
+
+  // if we get here then we're connected to WiFi
+  digitalWrite(led_pin, HIGH); 
+
+  // if normal operation is different from 9600 8N1 then print info now
+  // (and again after switching)
+  if( !SerialData.silent && (SerialData.baud!=9600 || GetSerialConfig()!=SERIAL_8N1) ) {
+      Serial.print("\nConnected to network "); Serial.println(WifiData.ssid);
+      Serial.print("Listening on port 23 (telnet) at IP "); Serial.println(WiFi.localIP());
+      Serial.flush();
+    }
+
+  // re-start serial interface with normal operation parameters
+  Serial.end();
+  Serial.begin(SerialData.baud, GetSerialConfig());
+
+  if( !SerialData.silent )  {
+    Serial.println();
+    Serial.print("\nWiFiModem 9600 v1");
+    Serial.print("\nConnected to network "); Serial.println(WifiData.ssid);
+    Serial.print("Listening on port 23 (telnet) at IP "); Serial.println(WiFi.localIP());
+    Serial.print("\nPress 's' to skip this information at future connects.");
+    
+    int n = 3;
+   // Original code was not rollover safe
+   // unsigned long t = millis()+1000;
+    unsigned long t = millis();
+    while( n > 0 ) {
+      if (millis() - t >= 1000) { Serial.print('.'); n--; t = millis(); }
+//      if( millis()>t ) { Serial.print('.'); n--; t = millis()+1000; } // Bad!!
+      if( Serial.available()>0 && tolower(Serial.read())=='s' )         {
+          SerialData.silent = true;
+          EEPROM.put(768, SerialData);
+          EEPROM.commit();
+          break; 
+        }
+    }
+    Serial.println('\n');
+  }
+
+  MDNS.begin("esp8266");
+  webserver.on("/", handleRoot);
+  webserver.on("/set", handleSet);
+  webserver.onNotFound(handleNotFound);
+  webserver.begin();
+
+  server.begin();
+  server.setNoDelay(true);
+
+  resetModemState();
+
+  // enable "good" connect messages
+  modemExtCodes = 1;
+
+  // flush serial input buffer
+  while( Serial.available() ) Serial.read();
+}
+
 
 
 void loop() {
@@ -1355,7 +1333,8 @@ void loop() {
 
   if (previous_ans_pb_state != current_ans_pb_state) {
     if (current_ans_pb_state == PRESSED) {
-      modemClient.stop();
+      if (modemClient.connected())
+        modemClient.stop();
       update_led(AA, TURN_ON, true);
     } else {
       update_led(AA, TURN_OFF, true);
