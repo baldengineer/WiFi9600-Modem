@@ -85,5 +85,6 @@ unsigned long previous_activity = 0;
 // millis() for TX and RX activity
 unsigned long previous_TX_act = 0;
 unsigned long previous_RX_act = 0;
+unsigned long TX_activity_interval = 0;
 unsigned long activity_interval = 47; // may need separate intervals for RX and TX
 

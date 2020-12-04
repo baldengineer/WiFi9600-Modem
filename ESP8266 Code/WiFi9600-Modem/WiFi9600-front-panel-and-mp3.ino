@@ -125,9 +125,10 @@ unsigned long activity_interval = 50; // may need separate intervals for RX and 
 	}
 
 	current_millis = millis();
-	if (current_millis - previous_TX_act >= activity_interval) {
+	if (current_millis - previous_TX_act >= TX_activity_interval) {
 	//	previous_RX_act = current_micros;
 		update_led(TX, TURN_OFF, true);
+		TX_activity_interval = 0;
 	}	
 }
 
@@ -141,8 +142,8 @@ void mp3_play_dialout() {
 	}
 /*	for (int x=0; x<5; x++) {
  	   delay(500);
-	    yield();
-	  } */
+	    yield()
+;	  } */
 }
 
 void mp3_play_carrier_detect() {

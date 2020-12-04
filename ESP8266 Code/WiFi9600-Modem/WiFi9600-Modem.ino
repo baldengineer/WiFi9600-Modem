@@ -508,7 +508,7 @@ void setup() {
   send_led_states(0x0000); // shut off LEDs
 
   Serial.begin(9600);
-  Serial.println("After LED test before MP3");
+//  Serial.println("After LED test before MP3");
   
   // Setup Sparkfun MP3 Quiic
   Wire.begin(i2c_SDA, i2c_SCL); /* join i2c bus with SDA=D1 and SCL=D2 of NodeMCU */
@@ -982,12 +982,12 @@ void handleModemCommand() {
                     status = E_ERROR;
 
                   if( status==E_OK ) {
-                      update_led(TR, TURN_ON, true);
                       update_led(OH, TURN_ON, true);
                       toggle_relay();
                       mp3_play_dialout();
 
                       if( modemClient.connect(addr, port) ) {
+                        update_led(CD, TURN_ON, true);
                           modemCommandMode = false;
                           modemEscapeState = 0;
                           resetTelnetState(modemTelnetState);
@@ -1210,6 +1210,8 @@ void relayModemData() {
           if( millis()>=nextChar ) {
               uint8_t b = modemClient.read();
               if( !handleTelnetProtocol(b, modemClient, modemTelnetState) ) {
+                  previous_RX_act = millis(); 
+                  update_led(RX, TURN_ON, true);
                   Serial.write(b);
                   // TODO fix millis() code
                   nextChar = millis() + 10000/baud;
@@ -1235,7 +1237,7 @@ void relayModemData() {
       uint8_t buf[256];
       int n = 0, millisPerChar = 1000 / (SerialData.baud / (1+SerialData.bits+SerialData.stopbits)) + 1;
       unsigned long startTime = millis();
-              
+    
       if( millisPerChar<5 ) millisPerChar = 5;
       while( Serial.available() && n<256 && millis()-startTime < 100 ) {
           uint8_t b = Serial.read();
@@ -1248,7 +1250,7 @@ void relayModemData() {
 
               // if not sending in binary mode then a stand-alone CR (without LF) must be followd by NUL
               if( !modemTelnetState.sendBinary && n>0 && buf[n-1] == 0x0d && b != 0x0a ) buf[n++] = 0;
-            }
+          }
 
           buf[n++] = b;
           prevCharTime = millis();
@@ -1267,9 +1269,12 @@ void relayModemData() {
       // if not sending in binary mode then a stand-alone CR (without LF) must be followd by NUL
       if( SerialData.handleTelnetProtocol && !modemTelnetState.sendBinary && buf[n-1] == 0x0d && !Serial.available() ) buf[n++] = 0;
       // TODO TX light
-      previous_TX_act = millis(); 
+ //     previous_TX_act = (millis() + (millisPerChar*n)); // create a longer decay for lots of transmitted characters
+
+      TX_activity_interval += millisPerChar*n*3; // handle decay for TX buffer
       update_led(TX, TURN_ON, true);
       modemClient.write(buf, n);
+      previous_TX_act = millis();
     }
 }
 
@@ -1287,6 +1292,8 @@ void relayTelnetData() {
           {
             // TODO-maybe add another RX light flash
             uint8_t b = serverClients[i].read();
+            previous_RX_act = millis(); 
+            update_led(RX, TURN_ON, true);
             if( !handleTelnetProtocol(b, serverClients[i], clientTelnetState[i]) ) Serial.write(b);
           }
       }
@@ -1342,6 +1349,10 @@ void relayTelnetData() {
 void loop() 
 {
   uint8_t i;
+
+  // let the user know the modem is booted
+  if (!(led_states & TR))
+    update_led(TR, TURN_ON, true);
 
   if( modemClient && modemClient.connected() ) {
       activity_decay();
