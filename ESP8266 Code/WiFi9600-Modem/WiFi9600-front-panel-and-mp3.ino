@@ -156,12 +156,6 @@ void mp3_play_carrier_detect() {
 		delay(100);
 		yield();
 	}
-	//Serial.print("CD MP3");
-/*f	for (int x=0; x<6; x++) {
-	//	Serial.print(".");
- 		delay(500);
-	    yield();
-	}*/
 }
 
 void init_mp3() {

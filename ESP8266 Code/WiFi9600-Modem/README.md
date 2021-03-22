@@ -1,4 +1,4 @@
-The modem firmware is using the code from this project:  https://github.com/dhansel/WifiModem
+sThe modem firmware is using the code from this project:  https://github.com/dhansel/WifiModem
 
 Modifications include support for LED activity and playing sounds. 
 
